@@ -188,16 +188,31 @@ app.use(express.static(path.join(__dirname, '../dist')));
 
 // API Routes (protected)
 app.get('/api/config', authenticateToken, (req, res) => {
-  // Always use the server's actual IP and port for WebSocket connections
-  const serverIP = getServerIP();
-  const host = `${serverIP}:${PORT}`;
+  const requestHost = req.get('host');
   const protocol = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https' ? 'wss' : 'ws';
   
-  console.log('Config API called - Returning host:', host, 'Protocol:', protocol);
+  let wsUrl;
+  
+  // Handle different scenarios for WebSocket URL construction
+  if (requestHost && requestHost.includes('orca.best')) {
+    // For domain access via Cloudflare tunnel, use the same host as the request
+    wsUrl = `${protocol}://${requestHost}`;
+  } else if (requestHost && requestHost.includes('localhost')) {
+    // For localhost access, use the same host and port as the request
+    wsUrl = `${protocol}://${requestHost}`;
+  } else {
+    // Fallback to server IP for other cases
+    const serverIP = getServerIP();
+    const host = `${serverIP}:${PORT}`;
+    wsUrl = `${protocol}://${host}`;
+  }
+  
+  console.log('Config API called - Request host:', requestHost, 'Protocol:', protocol, 'WebSocket URL:', wsUrl);
   
   res.json({
     serverPort: PORT,
-    wsUrl: `${protocol}://${host}`
+    wsUrl: wsUrl,
+    requestHost: requestHost
   });
 });
 

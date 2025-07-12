@@ -39,6 +39,21 @@ export const AuthProvider = ({ children }) => {
       
       // Check if system needs setup
       const statusResponse = await api.auth.status();
+      
+      if (!statusResponse.ok) {
+        // Handle non-200 responses from auth status
+        if (statusResponse.status >= 500) {
+          throw new Error('Server error - please try again');
+        } else if (statusResponse.status === 404) {
+          // Auth endpoint not found - system might not be set up
+          setNeedsSetup(true);
+          setIsLoading(false);
+          return;
+        } else {
+          throw new Error(`Authentication service unavailable (${statusResponse.status})`);
+        }
+      }
+      
       const statusData = await statusResponse.json();
       
       if (statusData.needsSetup) {
@@ -56,22 +71,39 @@ export const AuthProvider = ({ children }) => {
             const userData = await userResponse.json();
             setUser(userData.user);
             setNeedsSetup(false);
-          } else {
-            // Token is invalid
+          } else if (userResponse.status === 401) {
+            // Token is specifically invalid/expired
+            console.warn('Authentication token expired or invalid');
             localStorage.removeItem('auth-token');
             setToken(null);
             setUser(null);
+          } else {
+            // Other error with user endpoint
+            throw new Error(`User verification failed (${userResponse.status})`);
           }
         } catch (error) {
           console.error('Token verification failed:', error);
-          localStorage.removeItem('auth-token');
-          setToken(null);
-          setUser(null);
+          
+          // Only clear token if it's clearly invalid (401) or network error
+          if (error.message.includes('401') || error.name === 'TypeError') {
+            localStorage.removeItem('auth-token');
+            setToken(null);
+            setUser(null);
+          } else {
+            // For other errors, keep token but show error
+            setError('Unable to verify authentication - please refresh');
+          }
         }
       }
     } catch (error) {
       console.error('Auth status check failed:', error);
-      setError('Failed to check authentication status');
+      
+      // Differentiate between network errors and auth system errors
+      if (error.name === 'TypeError' || error.message.includes('fetch')) {
+        setError('Unable to connect to authentication service - please check your connection');
+      } else {
+        setError(error.message || 'Failed to check authentication status');
+      }
     } finally {
       setIsLoading(false);
     }

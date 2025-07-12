@@ -36,23 +36,48 @@ export function useWebSocket() {
             'Authorization': `Bearer ${token}`
           }
         });
+        
+        if (!configResponse.ok) {
+          throw new Error(`Config API failed: ${configResponse.status}`);
+        }
+        
         const config = await configResponse.json();
         wsBaseUrl = config.wsUrl;
         
-        // If the config returns localhost but we're not on localhost, use current host but with API server port
-        if (wsBaseUrl.includes('localhost') && !window.location.hostname.includes('localhost')) {
-          console.warn('Config returned localhost, using current host with API server port instead');
-          const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-          // For development, API server is typically on port 3002 when Vite is on 3001
-          const apiPort = window.location.port === '3001' ? '3002' : window.location.port;
-          wsBaseUrl = `${protocol}//${window.location.hostname}:${apiPort}`;
+        console.log('WebSocket config received:', { 
+          wsUrl: config.wsUrl, 
+          requestHost: config.requestHost,
+          currentLocation: window.location.href 
+        });
+        
+        // Additional validation and fallback logic
+        if (!wsBaseUrl || wsBaseUrl === 'undefined' || wsBaseUrl.includes('undefined')) {
+          throw new Error('Invalid WebSocket URL received from server');
         }
+        
+        // If we're on a domain but config returns localhost, override with current host
+        if (wsBaseUrl.includes('localhost') && !window.location.hostname.includes('localhost')) {
+          console.warn('Config returned localhost URL, but we are on domain - constructing WebSocket URL from current location');
+          const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+          wsBaseUrl = `${protocol}//${window.location.host}`;
+        }
+        
       } catch (error) {
-        console.warn('Could not fetch server config, falling back to current host with API server port');
+        console.warn('Could not fetch server config, constructing WebSocket URL from current location:', error.message);
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        // For development, API server is typically on port 3002 when Vite is on 3001
-        const apiPort = window.location.port === '3001' ? '3002' : window.location.port;
-        wsBaseUrl = `${protocol}//${window.location.hostname}:${apiPort}`;
+        
+        // Smart port detection based on current location
+        let targetHost = window.location.host;
+        
+        // If we're on Vite dev server (port 3001), API server is likely on 3002
+        if (window.location.port === '3001') {
+          const hostname = window.location.hostname;
+          targetHost = `${hostname}:3002`;
+        }
+        // For other cases (including production), use the same host
+        
+        wsBaseUrl = `${protocol}//${targetHost}`;
+        console.log('Fallback WebSocket URL constructed:', wsBaseUrl);
       }
       
       // Include token in WebSocket URL as query parameter

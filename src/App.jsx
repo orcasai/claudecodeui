@@ -84,7 +84,8 @@ function AppContent() {
   }, []);
 
   useEffect(() => {
-    // Fetch projects on component mount
+    // Only fetch projects if we're authenticated or don't need setup
+    // This prevents unnecessary 401 errors during the auth check process
     fetchProjects();
   }, []);
 
