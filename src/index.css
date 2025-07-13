@@ -443,7 +443,7 @@
     /* Allow vertical scrolling in scroll containers */
     .overflow-y-auto, [data-scroll-container] {
       touch-action: pan-y;
-      -webkit-overflow-scrolling: touch;
+      /* -webkit-overflow-scrolling: touch; - Disabled due to iOS rendering issues */
     }
     
     /* Preserve checkbox visibility */
@@ -499,7 +499,7 @@
     /* Fix mobile scrolling */
     .overflow-y-auto {
       touch-action: pan-y;
-      -webkit-overflow-scrolling: touch;
+      /* -webkit-overflow-scrolling: touch; - Disabled due to iOS rendering issues */
     }
     
     .chat-message {
