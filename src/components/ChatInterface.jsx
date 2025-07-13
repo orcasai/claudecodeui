@@ -795,6 +795,36 @@ const MessageComponent = memo(({ message, index, prevMessage, createDiff, onFile
                           </div>
                         );
                       })()}
+                      
+                      {/* Raw Tool Output Section - Only show if we have raw output */}
+                      {message.rawToolOutput && message.rawToolOutput.rawContent && (
+                        <details className="mt-3 border-t border-blue-200 dark:border-blue-700 pt-3">
+                          <summary className="text-sm text-gray-700 dark:text-gray-300 cursor-pointer hover:text-gray-800 dark:hover:text-gray-200 flex items-center gap-2">
+                            <svg className="w-4 h-4 transition-transform details-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                            🔍 View complete tool output
+                            <span className="text-xs text-gray-500 dark:text-gray-400">({String(message.rawToolOutput.rawContent).length} chars)</span>
+                          </summary>
+                          <div className="mt-3">
+                            <div className="bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                              <div className="flex items-center justify-between px-3 py-2 bg-gray-200 dark:bg-gray-900 border-b border-gray-300 dark:border-gray-600">
+                                <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                                  Complete {message.toolName} Output
+                                </span>
+                                <span className="text-xs text-gray-500 dark:text-gray-400">
+                                  Raw Data
+                                </span>
+                              </div>
+                              <div className="p-3 max-h-96 overflow-y-auto">
+                                <pre className="text-xs font-mono whitespace-pre-wrap break-words text-gray-800 dark:text-gray-200">
+                                  {String(message.rawToolOutput.rawContent)}
+                                </pre>
+                              </div>
+                            </div>
+                          </div>
+                        </details>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1111,6 +1141,7 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
   const convertSessionMessages = (rawMessages) => {
     const converted = [];
     const toolResults = new Map(); // Map tool_use_id to tool result
+    const rawToolOutputs = new Map(); // Map tool_use_id to raw tool output
     
     // First pass: collect all tool results
     for (const msg of rawMessages) {
@@ -1119,6 +1150,13 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
           if (part.type === 'tool_result') {
             toolResults.set(part.tool_use_id, {
               content: part.content,
+              isError: part.is_error,
+              timestamp: new Date(msg.timestamp || Date.now())
+            });
+            
+            // Store raw tool output separately for detailed view
+            rawToolOutputs.set(part.tool_use_id, {
+              rawContent: part.content,
               isError: part.is_error,
               timestamp: new Date(msg.timestamp || Date.now())
             });
@@ -1183,7 +1221,12 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
                 isToolUse: true,
                 toolName: part.name,
                 toolInput: JSON.stringify(part.input),
-                toolResult: toolResult ? (typeof toolResult.content === 'string' ? toolResult.content : JSON.stringify(toolResult.content)) : null,
+                toolResult: toolResult ? {
+                  content: typeof toolResult.content === 'string' ? toolResult.content : JSON.stringify(toolResult.content),
+                  isError: toolResult.isError || false,
+                  timestamp: toolResult.timestamp || new Date()
+                } : null,
+                rawToolOutput: rawToolOutputs.get(part.id), // Store raw output separately
                 toolError: toolResult?.isError || false,
                 toolResultTimestamp: toolResult?.timestamp || new Date()
               });
