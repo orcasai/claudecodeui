@@ -188,16 +188,33 @@ app.use(express.static(path.join(__dirname, '../dist')));
 
 // API Routes (protected)
 app.get('/api/config', authenticateToken, (req, res) => {
-  // Always use the server's actual IP and port for WebSocket connections
-  const serverIP = getServerIP();
-  const host = `${serverIP}:${PORT}`;
+  // Check for Cloudflare forwarded host headers first, then fall back to host header
+  const cfVisitorHost = req.get('cf-visitor');
+  const forwardedHost = req.get('x-forwarded-host');
+  const originalHost = req.get('x-original-host');
+  const requestHost = req.get('host');
   const protocol = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https' ? 'wss' : 'ws';
   
-  console.log('Config API called - Returning host:', host, 'Protocol:', protocol);
+  let wsHost;
+  let detectedHost = forwardedHost || originalHost || requestHost;
+  
+  // Check if request came through orca.best domain (via any header)
+  if ((detectedHost && detectedHost.includes('orca.best')) || 
+      (cfVisitorHost && cfVisitorHost.includes('orca.best')) ||
+      req.get('x-forwarded-proto') === 'https') {
+    // For domain requests, use the domain name
+    wsHost = 'orca.best';
+  } else {
+    // For localhost/IP requests, use the server IP and port
+    const serverIP = getServerIP();
+    wsHost = `${serverIP}:${PORT}`;
+  }
+  
+  console.log('Config API called - Request host:', requestHost, 'CF/Forwarded host:', forwardedHost, 'Using WS host:', wsHost, 'Protocol:', protocol);
   
   res.json({
     serverPort: PORT,
-    wsUrl: `${protocol}://${host}`
+    wsUrl: `${protocol}://${wsHost}`
   });
 });
 
