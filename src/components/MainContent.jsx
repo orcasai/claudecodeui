@@ -50,6 +50,7 @@ function MainContent({
   onShowSettings,         // Show tools settings panel
   autoExpandTools,        // Auto-expand tool accordions
   showRawParameters,      // Show raw parameters in tool accordions
+  showDebugOutput,        // Show debug output messages from CLI
   autoScrollToBottom,     // Auto-scroll to bottom when new messages arrive
   sendByCtrlEnter         // Send by Ctrl+Enter mode for East Asian language input
 }) {
@@ -423,6 +424,7 @@ function MainContent({
               onShowSettings={onShowSettings}
               autoExpandTools={autoExpandTools}
               showRawParameters={showRawParameters}
+              showDebugOutput={showDebugOutput}
               autoScrollToBottom={autoScrollToBottom}
               sendByCtrlEnter={sendByCtrlEnter}
               onShowAllTasks={tasksEnabled ? () => setActiveTab('tasks') : null}

@@ -59,6 +59,10 @@ function AppContent() {
   const [showRawParameters, setShowRawParameters] = useLocalStorage('showRawParameters', false);
   const [autoScrollToBottom, setAutoScrollToBottom] = useLocalStorage('autoScrollToBottom', true);
   const [sendByCtrlEnter, setSendByCtrlEnter] = useLocalStorage('sendByCtrlEnter', false);
+
+  // ============ Debug Configuration ============
+  const [showDebugOutput, setShowDebugOutput] = useLocalStorage('showDebugOutput', false);
+
   // Session Protection System: Track sessions with active conversations to prevent
   // automatic project updates from interrupting ongoing chats. When a user sends
   // a message, the session is marked as "active" and project updates are paused
@@ -660,6 +664,7 @@ function AppContent() {
           onShowSettings={() => setShowSettings(true)}
           autoExpandTools={autoExpandTools}
           showRawParameters={showRawParameters}
+          showDebugOutput={showDebugOutput}
           autoScrollToBottom={autoScrollToBottom}
           sendByCtrlEnter={sendByCtrlEnter}
         />
@@ -682,6 +687,8 @@ function AppContent() {
           onAutoExpandChange={setAutoExpandTools}
           showRawParameters={showRawParameters}
           onShowRawParametersChange={setShowRawParameters}
+          showDebugOutput={showDebugOutput}
+          onShowDebugOutputChange={setShowDebugOutput}
           autoScrollToBottom={autoScrollToBottom}
           onAutoScrollChange={setAutoScrollToBottom}
           sendByCtrlEnter={sendByCtrlEnter}

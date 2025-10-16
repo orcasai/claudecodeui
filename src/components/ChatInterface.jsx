@@ -161,7 +161,8 @@ const MessageComponent = memo(({ message, index, prevMessage, createDiff, onFile
                    ((prevMessage.type === 'assistant') ||
                     (prevMessage.type === 'user') ||
                     (prevMessage.type === 'tool') ||
-                    (prevMessage.type === 'error'));
+                    (prevMessage.type === 'error') ||
+                    (prevMessage.type === 'debug'));
   const messageRef = React.useRef(null);
   const [isExpanded, setIsExpanded] = React.useState(false);
   React.useEffect(() => {
@@ -236,6 +237,10 @@ const MessageComponent = memo(({ message, index, prevMessage, createDiff, onFile
                 <div className="w-8 h-8 bg-red-600 rounded-full flex items-center justify-center text-white text-sm flex-shrink-0">
                   !
                 </div>
+              ) : message.type === 'debug' ? (
+                <div className="w-8 h-8 bg-purple-600 dark:bg-purple-700 rounded-full flex items-center justify-center text-white text-sm flex-shrink-0">
+                  🐛
+                </div>
               ) : message.type === 'tool' ? (
                 <div className="w-8 h-8 bg-gray-600 dark:bg-gray-700 rounded-full flex items-center justify-center text-white text-sm flex-shrink-0">
                   🔧
@@ -250,7 +255,7 @@ const MessageComponent = memo(({ message, index, prevMessage, createDiff, onFile
                 </div>
               )}
               <div className="text-sm font-medium text-gray-900 dark:text-white">
-                {message.type === 'error' ? 'Error' : message.type === 'tool' ? 'Tool' : ((localStorage.getItem('selected-provider') || 'claude') === 'cursor' ? 'Cursor' : 'Claude')}
+                {message.type === 'error' ? 'Error' : message.type === 'debug' ? 'Debug Output' : message.type === 'tool' ? 'Tool' : ((localStorage.getItem('selected-provider') || 'claude') === 'cursor' ? 'Cursor' : 'Claude')}
               </div>
             </div>
           )}
@@ -1066,7 +1071,13 @@ const MessageComponent = memo(({ message, index, prevMessage, createDiff, onFile
                   </details>
                 )}
                 
-                {message.type === 'assistant' ? (
+                {message.type === 'debug' ? (
+                  <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-3 font-mono text-xs overflow-x-auto">
+                    <div className="text-purple-900 dark:text-purple-100 whitespace-pre-wrap break-words">
+                      {message.content}
+                    </div>
+                  </div>
+                ) : message.type === 'assistant' ? (
                   <div className="prose prose-sm max-w-none dark:prose-invert prose-gray [&_code]:!bg-transparent [&_code]:!p-0 [&_pre]:!bg-transparent [&_pre]:!border-0 [&_pre]:!p-0">
                     <ReactMarkdown
                       components={{
@@ -1166,7 +1177,7 @@ const ImageAttachment = ({ file, onRemove, uploadProgress, error }) => {
 // - onReplaceTemporarySession: Called to replace temporary session ID with real WebSocket session ID
 //
 // This ensures uninterrupted chat experience by pausing sidebar refreshes during conversations.
-function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, messages, onFileOpen, onInputFocusChange, onSessionActive, onSessionInactive, onReplaceTemporarySession, onNavigateToSession, onShowSettings, autoExpandTools, showRawParameters, autoScrollToBottom, sendByCtrlEnter, onTaskClick, onShowAllTasks }) {
+function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, messages, onFileOpen, onInputFocusChange, onSessionActive, onSessionInactive, onReplaceTemporarySession, onNavigateToSession, onShowSettings, autoExpandTools, showRawParameters, showDebugOutput, autoScrollToBottom, sendByCtrlEnter, onTaskClick, onShowAllTasks }) {
   const { tasksEnabled } = useTasksSettings();
   const [input, setInput] = useState(() => {
     if (typeof window !== 'undefined' && selectedProject) {
@@ -1765,15 +1776,26 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
           });
         }
       }
+
+      // ============ Debug Output Support ============
+      // Add raw CLI output as debug messages if showDebugOutput is enabled
+      if (showDebugOutput && msg.raw_line) {
+        converted.push({
+          type: 'debug',
+          content: msg.raw_line,
+          timestamp: msg.timestamp || new Date().toISOString(),
+          isDebug: true
+        });
+      }
     }
-    
+
     return converted;
   };
 
   // Memoize expensive convertSessionMessages operation
   const convertedMessages = useMemo(() => {
     return convertSessionMessages(sessionMessages);
-  }, [sessionMessages]);
+  }, [sessionMessages, showDebugOutput]);
 
   // Define scroll functions early to avoid hoisting issues in useEffect dependencies
   const scrollToBottom = useCallback(() => {
@@ -2379,7 +2401,7 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
               tokens: 0,
               can_interrupt: true
             };
-            
+
             // Check for different status message formats
             if (statusData.message) {
               statusInfo.text = statusData.message;
@@ -2388,28 +2410,41 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
             } else if (typeof statusData === 'string') {
               statusInfo.text = statusData;
             }
-            
+
             // Extract token count
             if (statusData.tokens) {
               statusInfo.tokens = statusData.tokens;
             } else if (statusData.token_count) {
               statusInfo.tokens = statusData.token_count;
             }
-            
+
             // Check if can interrupt
             if (statusData.can_interrupt !== undefined) {
               statusInfo.can_interrupt = statusData.can_interrupt;
             }
-            
+
             setClaudeStatus(statusInfo);
             setIsLoading(true);
             setCanAbortSession(statusInfo.can_interrupt);
           }
           break;
-  
+
+        case 'claude-debug':
+          // Handle debug output messages - only show if user enabled debug mode
+          // This includes raw CLI output: hooks, interrupts, system messages, etc.
+          if (showDebugOutput && latestMessage.data) {
+            setChatMessages(prev => [...prev, {
+              type: 'debug',
+              content: latestMessage.data,
+              timestamp: new Date(latestMessage.timestamp || Date.now()),
+              isDebug: true
+            }]);
+          }
+          break;
+
       }
     }
-  }, [messages]);
+  }, [messages, showDebugOutput]);
 
   // Load file list when project changes
   useEffect(() => {

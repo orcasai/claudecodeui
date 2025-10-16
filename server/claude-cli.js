@@ -259,25 +259,28 @@ async function spawnClaude(command, options = {}, ws) {
     claudeProcess.stdout.on('data', (data) => {
       const rawOutput = data.toString();
       console.log('📤 Claude CLI stdout:', rawOutput);
-      
+
+      // Send raw output for debug mode (shows hooks, interrupts, etc.)
+      sendDebugOutput(ws, rawOutput);
+
       const lines = rawOutput.split('\n').filter(line => line.trim());
-      
+
       for (const line of lines) {
         try {
           const response = JSON.parse(line);
           console.log('📄 Parsed JSON response:', response);
-          
+
           // Capture session ID if it's in the response
           if (response.session_id && !capturedSessionId) {
             capturedSessionId = response.session_id;
             console.log('📝 Captured session ID:', capturedSessionId);
-            
+
             // Update process key with captured session ID
             if (processKey !== capturedSessionId) {
               activeClaudeProcesses.delete(processKey);
               activeClaudeProcesses.set(capturedSessionId, claudeProcess);
             }
-            
+
             // Send session-created event only once for new sessions
             if (!sessionId && !sessionCreatedSent) {
               sessionCreatedSent = true;
@@ -287,7 +290,7 @@ async function spawnClaude(command, options = {}, ws) {
               }));
             }
           }
-          
+
           // Send parsed response to WebSocket
           ws.send(JSON.stringify({
             type: 'claude-response',
@@ -306,10 +309,15 @@ async function spawnClaude(command, options = {}, ws) {
     
     // Handle stderr
     claudeProcess.stderr.on('data', (data) => {
-      console.error('Claude CLI stderr:', data.toString());
+      const stderrOutput = data.toString();
+      console.error('Claude CLI stderr:', stderrOutput);
+
+      // Send stderr to debug output as well
+      sendDebugOutput(ws, `[stderr] ${stderrOutput}`);
+
       ws.send(JSON.stringify({
         type: 'claude-error',
-        error: data.toString()
+        error: stderrOutput
       }));
     });
     
@@ -391,7 +399,27 @@ function abortClaudeSession(sessionId) {
   return false;
 }
 
+// ============ Debug Output Helper ============
+// Send raw CLI output to frontend for debugging purposes
+// This allows users to see all output (hooks, interrupts, etc.) that the CLI produces
+// Can be disabled via environment variable or frontend setting
+function sendDebugOutput(ws, rawData) {
+  // Check if debug output is enabled (defaults to true, can be disabled via env var)
+  if (process.env.ENABLE_DEBUG_OUTPUT !== 'false') {
+    try {
+      ws.send(JSON.stringify({
+        type: 'claude-debug',
+        data: rawData,
+        timestamp: new Date().toISOString()
+      }));
+    } catch (error) {
+      console.error('Error sending debug output:', error);
+    }
+  }
+}
+
 export {
   spawnClaude,
-  abortClaudeSession
+  abortClaudeSession,
+  sendDebugOutput
 };

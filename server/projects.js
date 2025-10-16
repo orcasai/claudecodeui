@@ -737,6 +737,9 @@ async function getSessionMessages(projectName, sessionId, limit = null, offset =
           try {
             const entry = JSON.parse(line);
             if (entry.sessionId === sessionId) {
+              // ============ Debug Output Support ============
+              // Include raw CLI output for debug mode in frontend
+              entry.raw_line = line;
               messages.push(entry);
             }
           } catch (parseError) {
