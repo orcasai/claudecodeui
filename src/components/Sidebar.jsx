@@ -79,6 +79,9 @@ function Sidebar({
   const [filteredPaths, setFilteredPaths] = useState([]);
   const [selectedPathIndex, setSelectedPathIndex] = useState(-1);
 
+  // Ref to track last searched session ID to prevent infinite loops
+  const lastSearchedSessionId = useRef(null);
+
   // TaskMaster context
   const { setCurrentProject, mcpServerStatus } = useTaskMaster();
   const { tasksEnabled } = useTasksSettings();
@@ -129,6 +132,64 @@ function Sidebar({
       setExpandedProjects(prev => new Set([...prev, selectedProject.name]));
     }
   }, [selectedSession, selectedProject]);
+
+  // Auto-select session when searching for a session ID
+  useEffect(() => {
+    const searchTerm = searchFilter.trim();
+
+    // Check if search term looks like a session ID (UUID format)
+    const isSessionIdFormat = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(searchTerm);
+
+    if (isSessionIdFormat && searchTerm.length > 0) {
+      // Only search if we haven't already searched for this session ID
+      if (lastSearchedSessionId.current === searchTerm) {
+        return;
+      }
+
+      // Mark this session ID as searched
+      lastSearchedSessionId.current = searchTerm;
+
+      // Call API to search for the session
+      const searchForSession = async () => {
+        try {
+          const response = await api.searchSession(searchTerm);
+          const result = await response.json();
+
+          if (result.found && result.project) {
+            // Find the actual project object
+            const matchingProject = projects.find(p => p.name === result.project.name);
+
+            if (matchingProject) {
+              // Auto-expand the project
+              setExpandedProjects(prev => new Set([...prev, result.project.name]));
+
+              // Also load additional sessions for this project if needed to ensure session is visible
+              if (!additionalSessions[result.project.name]) {
+                loadMoreSessions(matchingProject);
+              }
+
+              // Auto-select the session after a short delay to ensure project is expanded and sessions loaded
+              setTimeout(() => {
+                // Create a session object compatible with onSessionSelect
+                const sessionObj = {
+                  ...result.session,
+                  __provider: result.provider
+                };
+                onSessionSelect(sessionObj);
+              }, 300);
+            }
+          }
+        } catch (error) {
+          console.error('Error searching for session:', error);
+        }
+      };
+
+      searchForSession();
+    } else if (!isSessionIdFormat && searchTerm.length === 0) {
+      // Reset the ref when search is cleared
+      lastSearchedSessionId.current = null;
+    }
+  }, [searchFilter]);
 
   // Mark sessions as loaded when projects come in
   useEffect(() => {
@@ -545,13 +606,23 @@ function Sidebar({
   // Filter projects based on search input
   const filteredProjects = sortedProjects.filter(project => {
     if (!searchFilter.trim()) return true;
-    
+
     const searchLower = searchFilter.toLowerCase();
     const displayName = (project.displayName || project.name).toLowerCase();
     const projectName = project.name.toLowerCase();
-    
+
     // Search in both display name and actual project name/path
-    return displayName.includes(searchLower) || projectName.includes(searchLower);
+    if (displayName.includes(searchLower) || projectName.includes(searchLower)) {
+      return true;
+    }
+
+    // Also search in session IDs (Claude + Cursor sessions)
+    const allSessions = getAllSessions(project);
+    const hasMatchingSession = allSessions.some(session => {
+      return session.id && session.id.toLowerCase().includes(searchLower);
+    });
+
+    return hasMatchingSession;
   });
 
   // Enhanced project selection that updates both the main UI and TaskMaster context

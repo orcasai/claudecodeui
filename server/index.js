@@ -37,7 +37,7 @@ import pty from 'node-pty';
 import fetch from 'node-fetch';
 import mime from 'mime-types';
 
-import { getProjects, getSessions, getSessionMessages, renameProject, deleteSession, deleteProject, addProjectManually, extractProjectDirectory, clearProjectDirectoryCache } from './projects.js';
+import { getProjects, getSessions, getSessionMessages, renameProject, deleteSession, deleteProject, addProjectManually, extractProjectDirectory, clearProjectDirectoryCache, findSessionById } from './projects.js';
 import { spawnClaude, abortClaudeSession } from './claude-cli.js';
 import { spawnCursor, abortCursorSession } from './cursor-cli.js';
 import gitRoutes from './routes/git.js';
@@ -223,6 +223,27 @@ app.get('/api/projects/:projectName/sessions', authenticateToken, async (req, re
         const result = await getSessions(req.params.projectName, parseInt(limit), parseInt(offset));
         res.json(result);
     } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Search for a session by ID across all projects
+app.get('/api/search-session/:sessionId', authenticateToken, async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        console.log('🔍 Searching for session:', sessionId);
+
+        const result = await findSessionById(sessionId);
+
+        if (result.found) {
+            console.log('✅ Session found:', result.provider, result.projectName);
+        } else {
+            console.log('❌ Session not found:', sessionId);
+        }
+
+        res.json(result);
+    } catch (error) {
+        console.error('❌ Error searching for session:', error);
         res.status(500).json({ error: error.message });
     }
 });

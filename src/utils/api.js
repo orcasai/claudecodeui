@@ -71,6 +71,8 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ path }),
     }),
+  searchSession: (sessionId) =>
+    authenticatedFetch(`/api/search-session/${sessionId}`),
   readFile: (projectName, filePath) =>
     authenticatedFetch(`/api/projects/${projectName}/file?filePath=${encodeURIComponent(filePath)}`),
   saveFile: (projectName, filePath, content) =>

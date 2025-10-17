@@ -937,6 +937,170 @@ async function addProjectManually(projectPath, displayName = null) {
   };
 }
 
+// Search for a session by ID across all projects (both Claude and Cursor)
+async function findSessionById(sessionId) {
+  const claudeDir = path.join(process.env.HOME, '.claude', 'projects');
+
+  try {
+    // Check if the .claude/projects directory exists
+    await fs.access(claudeDir);
+
+    // Get all project directories
+    const entries = await fs.readdir(claudeDir, { withFileTypes: true });
+
+    // Search through Claude sessions
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const projectName = entry.name;
+        const projectDir = path.join(claudeDir, projectName);
+
+        try {
+          const files = await fs.readdir(projectDir);
+          const jsonlFiles = files.filter(file => file.endsWith('.jsonl'));
+
+          // Search through JSONL files
+          for (const file of jsonlFiles) {
+            const jsonlFile = path.join(projectDir, file);
+            const fileStream = fsSync.createReadStream(jsonlFile);
+            const rl = readline.createInterface({
+              input: fileStream,
+              crlfDelay: Infinity
+            });
+
+            for await (const line of rl) {
+              if (line.trim()) {
+                try {
+                  const entry = JSON.parse(line);
+                  if (entry.sessionId === sessionId) {
+                    // Found the session! Extract project directory and return info
+                    const actualProjectDir = await extractProjectDirectory(projectName);
+                    const config = await loadProjectConfig();
+                    const customName = config[projectName]?.displayName;
+                    const autoDisplayName = await generateDisplayName(projectName, actualProjectDir);
+
+                    // Get session details
+                    const sessionResult = await getSessions(projectName, 1000, 0); // Get all sessions
+                    const session = sessionResult.sessions.find(s => s.id === sessionId);
+
+                    return {
+                      found: true,
+                      provider: 'claude',
+                      projectName: projectName,
+                      project: {
+                        name: projectName,
+                        path: actualProjectDir,
+                        displayName: customName || autoDisplayName,
+                        fullPath: actualProjectDir
+                      },
+                      session: session || {
+                        id: sessionId,
+                        summary: 'Session found',
+                        lastActivity: new Date().toISOString()
+                      }
+                    };
+                  }
+                } catch (parseError) {
+                  // Skip malformed lines
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.warn(`Error searching project ${projectName}:`, error.message);
+        }
+      }
+    }
+
+    // Also search through Cursor sessions
+    // Get all known projects first
+    const projects = await getProjects();
+
+    for (const project of projects) {
+      try {
+        // Check Cursor sessions for this project
+        const cwdId = crypto.createHash('md5').update(project.path).digest('hex');
+        const cursorChatsPath = path.join(os.homedir(), '.cursor', 'chats', cwdId);
+
+        try {
+          await fs.access(cursorChatsPath);
+          const sessionDirs = await fs.readdir(cursorChatsPath);
+
+          if (sessionDirs.includes(sessionId)) {
+            // Found the session in Cursor!
+            const sessionPath = path.join(cursorChatsPath, sessionId);
+            const storeDbPath = path.join(sessionPath, 'store.db');
+
+            try {
+              await fs.access(storeDbPath);
+
+              // Open SQLite database to get session info
+              const db = await open({
+                filename: storeDbPath,
+                driver: sqlite3.Database,
+                mode: sqlite3.OPEN_READONLY
+              });
+
+              const metaRows = await db.all(`SELECT key, value FROM meta`);
+              let metadata = {};
+              for (const row of metaRows) {
+                if (row.value) {
+                  try {
+                    const hexMatch = row.value.toString().match(/^[0-9a-fA-F]+$/);
+                    if (hexMatch) {
+                      const jsonStr = Buffer.from(row.value, 'hex').toString('utf8');
+                      metadata[row.key] = JSON.parse(jsonStr);
+                    } else {
+                      metadata[row.key] = row.value.toString();
+                    }
+                  } catch (e) {
+                    metadata[row.key] = row.value.toString();
+                  }
+                }
+              }
+
+              await db.close();
+
+              const sessionName = metadata.title || metadata.sessionTitle || 'Untitled Session';
+              const createdAt = metadata.createdAt ? new Date(metadata.createdAt).toISOString() : new Date().toISOString();
+
+              return {
+                found: true,
+                provider: 'cursor',
+                projectName: project.name,
+                project: {
+                  name: project.name,
+                  path: project.path,
+                  displayName: project.displayName,
+                  fullPath: project.fullPath
+                },
+                session: {
+                  id: sessionId,
+                  name: sessionName,
+                  createdAt: createdAt,
+                  lastActivity: createdAt
+                }
+              };
+            } catch (error) {
+              console.warn(`Error reading Cursor session ${sessionId}:`, error.message);
+            }
+          }
+        } catch (error) {
+          // No Cursor sessions for this project
+        }
+      } catch (error) {
+        console.warn(`Error searching Cursor sessions for project ${project.name}:`, error.message);
+      }
+    }
+
+    // Session not found
+    return { found: false };
+
+  } catch (error) {
+    console.error('Error searching for session:', error);
+    return { found: false, error: error.message };
+  }
+}
+
 // Fetch Cursor sessions for a given project path
 async function getCursorSessions(projectPath) {
   try {
@@ -1062,5 +1226,6 @@ export {
   loadProjectConfig,
   saveProjectConfig,
   extractProjectDirectory,
-  clearProjectDirectoryCache
+  clearProjectDirectoryCache,
+  findSessionById
 };
